@@ -1,6 +1,8 @@
 """The six agent tools. Every tool returns a plain string the LLM can read."""
 import re
+from contextvars import ContextVar
 from datetime import date
+from typing import Any
 
 from langchain_core.tools import tool
 
@@ -18,6 +20,16 @@ BODY_WORDS = {"suv": "suv", "sedan": "sedan", "hatchback": "hatchback", "crossov
 FUEL_WORDS = {"hybrid": "hybrid", "electric": "electric", "ev": "electric", "diesel": "diesel"}
 PHONE_RE = re.compile(r"^(\+92|0)3\d{9}$")
 MAX_LIST = 8
+# The user's latest message, set by the agent per turn. Small models sometimes send junk
+# tool arguments (e.g. the JSON schema itself); tools then fall back to this text.
+CURRENT_MESSAGE: ContextVar[str] = ContextVar("CURRENT_MESSAGE", default="")
+
+
+def _text(x: Any) -> str | None:
+    """Return x if it is a non-empty string (or a number), else None."""
+    if isinstance(x, (int, float)) and not isinstance(x, bool):
+        return str(x)
+    return x.strip() if isinstance(x, str) and x.strip() else None
 
 
 def _cars():
@@ -36,16 +48,21 @@ def _words(text: str) -> set[str]:
 
 
 @tool
-def search_cars(query: str, brand: str | None = None, max_price: str | None = None,
-                body_type: str | None = None) -> str:
-    """Search new cars sold in Pakistan by name, brand, budget (e.g. '50 lakh') or body type
-    (suv, sedan, hatchback, crossover, pickup, mpv). Use this for ANY price or spec question."""
+def search_cars(query: Any = "", brand: Any = None, max_price: Any = None, body_type: Any = None) -> str:
+    """Search new cars sold in Pakistan. query: the user's question as text (e.g. 'Honda City price').
+    Optional: brand, max_price (e.g. '50 lakh'), body_type (suv, sedan, hatchback, crossover, pickup, mpv).
+    Use this for ANY price or spec question."""
+    query = _text(query) or CURRENT_MESSAGE.get() or ""
+    cars = _cars()
+    brand = next((b for b in cars.brand.unique() if _text(brand) and b.lower() == _text(brand).lower()), None)
+    body_type = _text(body_type)
+    body_type = body_type.lower() if body_type and body_type.lower() in set(BODY_WORDS.values()) else None
+    max_price = _text(max_price)
     words = _words(query)
     if words & OTHER_BRANDS:
         return config.REFUSAL
-    cars = _cars()
     budget = parse_price(max_price) if max_price else None
-    if budget is None and max_price is None:
+    if budget is None:
         budget = parse_price(query) if re.search(r"under|below|upto|up to|tak|budget|within|less than|max", query, re.I) else None
     hit = match_model(query)
     filtered = cars
@@ -90,9 +107,10 @@ def search_cars(query: str, brand: str | None = None, max_price: str | None = No
 
 
 @tool
-def compare_models(model_a: str, model_b: str) -> str:
-    """Compare two car models side by side (price range, engine, fuel, seats, mileage)."""
-    a, b = match_model(model_a), match_model(model_b)
+def compare_models(model_a: Any, model_b: Any) -> str:
+    """Compare two car models side by side (price range, engine, fuel, seats, mileage).
+    model_a / model_b: model names as text, e.g. 'Toyota Corolla', 'Honda Civic'."""
+    a, b = match_model(_text(model_a)), match_model(_text(model_b))
     if not a or not b:
         return config.REFUSAL
     cars = _cars()
@@ -119,9 +137,9 @@ def compare_models(model_a: str, model_b: str) -> str:
 
 
 @tool
-def emi_calculator(price: str, down_payment_pct: float = 30, years: int = 5, annual_rate_pct: float = 20) -> str:
+def emi_calculator(price: Any, down_payment_pct: float = 30, years: int = 5, annual_rate_pct: float = 20) -> str:
     """Calculate a monthly car-loan instalment (EMI). price can be '50 lakh', '1.2 crore' or 'Rs 6,099,000'."""
-    p = parse_price(price)
+    p = parse_price(_text(price))
     if not p:
         return "Cannot calculate: I couldn't understand the price. Give it like '50 lakh' or 'Rs 6,099,000'."
     if not (0 <= down_payment_pct < 100) or not (1 <= years <= 10) or annual_rate_pct < 0:

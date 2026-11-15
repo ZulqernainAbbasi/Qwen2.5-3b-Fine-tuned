@@ -84,3 +84,32 @@ def test_system_prompt_sent(fake):
     fake.script = [AIMessage(content="hi")]
     graph.run_agent("s4", "hi")
     assert "PakCar Assistant" in fake.seen[0][0]
+
+
+def test_refusal_without_tools_retries_with_search(fake):
+    fake.script = [
+        AIMessage(content=config.REFUSAL),  # lazy first answer, no tool used
+        AIMessage(content="", tool_calls=[{"name": "search_cars", "args": {"query": "hybrid suv under 1 crore"}, "id": "r1"}]),
+        AIMessage(content="Try the Toyota Corolla Cross 1.8 HEV at Rs 9,299,000."),
+    ]
+    out = graph.run_agent("s5", "Best hybrid SUV under 1 crore?")
+    assert [s["tool"] for s in out["steps"]] == ["search_cars"]
+    assert out["reply"].startswith("Try the Toyota Corolla Cross")
+
+
+def test_refusal_after_tool_use_is_kept(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "search_cars", "args": {"query": "tesla"}, "id": "t1"}]),
+        AIMessage(content=config.REFUSAL),
+    ]
+    out = graph.run_agent("s6", "Tesla price?")
+    assert out["reply"] == config.REFUSAL and len(out["steps"]) == 1
+
+
+def test_junk_tool_args_use_user_message(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "search_cars", "args": {"query": {"type": "string"}}, "id": "j1"}]),
+        AIMessage(content="The Honda City starts at Rs 4,737,000."),
+    ]
+    out = graph.run_agent("s7", "Honda City price?")
+    assert "4,737,000" in out["steps"][0]["result"]

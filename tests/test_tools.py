@@ -112,3 +112,35 @@ def test_all_tools_count():
 def test_suv_query_includes_crossovers(no_rag):
     out = tools.search_cars.invoke({"query": "hybrid suv under 1 crore"})
     assert "Corolla Cross" in out and "HR-V" in out
+
+
+def test_search_query_schema_dict_falls_back_to_user_message(no_rag):
+    token = tools.CURRENT_MESSAGE.set("Honda City price?")
+    try:
+        out = tools.search_cars.invoke({"query": {"type": "string"}, "brand": "Honda", "body_type": "sedan", "max_price": "1.2 crore"})
+    finally:
+        tools.CURRENT_MESSAGE.reset(token)
+    assert "Honda City" in out and "4,737,000" in out
+
+
+def test_search_ignores_invalid_brand(no_rag):
+    out = tools.search_cars.invoke({"query": "best hybrid suv", "brand": "Hybrid", "max_price": "1.0 crore"})
+    assert "Corolla Cross" in out
+
+
+def test_search_named_model_ignores_wrong_body_type(no_rag):
+    out = tools.search_cars.invoke({"query": "Alto ki qeemat", "brand": "Suzuki", "body_type": "sedan", "max_price": "50 lakh"})
+    assert "Suzuki Alto" in out and "2,994,861" in out
+
+
+def test_search_ignores_garbage_max_price(no_rag):
+    out = tools.search_cars.invoke({"query": "Honda Civic", "max_price": {"type": "string"}})
+    assert "8,499,000" in out
+
+
+def test_emi_accepts_numeric_price():
+    assert "Rs 3,500,000" in tools.emi_calculator.invoke({"price": 5000000})
+
+
+def test_compare_accepts_non_string_gracefully():
+    assert tools.compare_models.invoke({"model_a": {"type": "string"}, "model_b": "civic"}) == config.REFUSAL

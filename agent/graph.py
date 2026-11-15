@@ -5,7 +5,7 @@ from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import create_react_agent
 
 import config
-from agent.tools import ALL_TOOLS, escalate_to_human
+from agent.tools import ALL_TOOLS, CURRENT_MESSAGE, escalate_to_human
 from finetune.build_dataset import SYSTEM_PROMPT
 
 MAX_TOOL_STEPS = 6
@@ -51,8 +51,32 @@ def _steps(messages) -> list[dict]:
     return steps
 
 
+RETRY_NUDGE = ("(System note: you answered without checking the database. Call search_cars "
+               "(or another tool) for this question before answering.) ")
+
+
 def run_agent(session_id: str, message: str) -> dict:
-    """Run one user turn. Returns {"reply": str, "steps": [{"tool", "args", "result"}]}."""
+    """Run one user turn. Returns {"reply": str, "steps": [{"tool", "args", "result"}]}.
+
+    If the model refuses without having used any tool, retry once with a nudge to search first,
+    so a lazy refusal never hides data we actually have."""
+    token = CURRENT_MESSAGE.set(message)
+    try:
+        return _run_with_retry(session_id, message)
+    finally:
+        CURRENT_MESSAGE.reset(token)
+
+
+def _run_with_retry(session_id: str, message: str) -> dict:
+    out = _run_once(session_id, message)
+    if not out["steps"] and out["reply"].strip().startswith(config.REFUSAL):
+        retry = _run_once(session_id, RETRY_NUDGE + message)
+        if retry["steps"]:
+            return retry
+    return out
+
+
+def _run_once(session_id: str, message: str) -> dict:
     agent = _agent()
     cfg = {"configurable": {"thread_id": session_id}, "recursion_limit": 2 * MAX_TOOL_STEPS + 1}
     before = len(agent.get_state(cfg).values.get("messages", [])) if agent.get_state(cfg).values else 0
