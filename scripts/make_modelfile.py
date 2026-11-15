@@ -1,6 +1,6 @@
 """Write the Ollama Modelfile for car-assistant, reusing qwen2.5's tool-capable chat TEMPLATE.
 
-Run on Windows: python -m scripts.make_modelfile ; then: ollama create car-assistant -f Modelfile -q q4_K_M
+Run on Windows: python -m scripts.make_modelfile ; then: ollama create car-assistant -f Modelfile
 """
 import subprocess
 
@@ -13,7 +13,7 @@ def main() -> None:
     template = subprocess.run(["ollama", "show", BASE, "--template"], capture_output=True, text=True,
                               check=True, encoding="utf-8").stdout.strip()
     content = (
-        "FROM ./outputs/merged\n"
+        "FROM ./outputs/car-assistant-q8_0.gguf\n"
         f'TEMPLATE """{template}"""\n'
         f'SYSTEM """{SYSTEM_PROMPT}"""\n'
         "PARAMETER temperature 0.3\n"

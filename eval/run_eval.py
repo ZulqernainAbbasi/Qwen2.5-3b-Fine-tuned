@@ -34,8 +34,8 @@ def context_for(question: str) -> str:
 
 def ask(model: str, question: str, ctx: str | None) -> str:
     user = question if ctx is None else f"Context from the car database:\n{ctx}\n\nQuestion: {question}"
-    r = requests.post(f"{config.OLLAMA_URL}/api/chat", timeout=300, json={
-        "model": model, "stream": False, "options": {"temperature": 0, "num_ctx": 4096},
+    r = requests.post(f"{config.OLLAMA_URL}/api/chat", timeout=180, json={
+        "model": model, "stream": False, "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 512},
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]})
     r.raise_for_status()
     return r.json()["message"]["content"]
@@ -57,7 +57,10 @@ def run_config(name: str, limit: int | None) -> None:
             q = e["messages"][1]["content"]
             expected = e["messages"][2]["content"]
             t0 = time.time()
-            ans = ask(model, q, context_for(q) if use_rag else None)
+            try:
+                ans = ask(model, q, context_for(q) if use_rag else None)
+            except requests.RequestException as err:  # e.g. a runaway generation timing out
+                ans = f"[error: {type(err).__name__}]"
             s = score(ans, expected, e["type"])
             w.writerow({"config": name, "id": i, "kind": e["type"], "latency_s": round(time.time() - t0, 2),
                         **s, "answer": ans[:500]})
