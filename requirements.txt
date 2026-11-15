@@ -1,0 +1,15 @@
+pandas
+chromadb
+sentence-transformers
+rapidfuzz
+langgraph
+langchain-core
+langchain-ollama
+fastapi
+uvicorn
+httpx
+requests
+streamlit
+python-dotenv
+matplotlib
+pytest

@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+data/chroma/
+data/bookings.db
+*.gguf
+outputs/
+.env
+.superpowers/
+.streamlit/secrets.toml
+ccp_sync*.tar
+pytest_out.txt
