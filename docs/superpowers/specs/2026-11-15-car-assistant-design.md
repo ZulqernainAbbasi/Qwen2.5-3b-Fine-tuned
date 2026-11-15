@@ -80,7 +80,7 @@ The backend URL and a shared API key are stored in Streamlit secrets.
 
 ### 6.1 Base model (requirement 1)
 - **Qwen2.5-3B-Instruct.** It fits QLoRA training in 8 GB, supports tool calling,
-  handles Roman Urdu reasonably, and has an Apache-2.0 license.
+  handles Roman Urdu reasonably. Licence: Qwen Research License, which permits academic/research use like this course project but restricts commercial use (corrected 2026-11-15; Apache 2.0 covers the 0.5B, 1.5B and 7B sizes).
 - The report compares it with Llama-3.2-3B and Phi-3.5-mini on size, license,
   tool-calling ability and VRAM use.
 

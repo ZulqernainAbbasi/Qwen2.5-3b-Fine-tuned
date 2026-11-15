@@ -11,3 +11,13 @@ Quick start (Windows):
 python -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt
 .\.venv\Scripts\python -m pytest
 ```
+
+## What's inside
+| Requirement | Where |
+|---|---|
+| 1. Pretrained LLM | Qwen2.5-3B-Instruct (`docs/model-selection.md`) |
+| 2. RAG on custom data | `data/cars.csv`, `data/docs/`, `rag/` (ChromaDB + bge-small) |
+| 3. Fine-tuning | `finetune/` (QLoRA with Unsloth in WSL; dataset builder + 1,300 examples) |
+| 4. Deployment | `backend/api.py` (FastAPI), `frontend/app.py` (Streamlit Cloud), `scripts/start_backend.ps1` (tunnel), `docs/DEPLOY.md` |
+| 5. Agentic AI | `agent/graph.py` (LangGraph) + `agent/tools.py` (search, compare, EMI, bookings, escalation) |
+| Evaluation | `eval/run_eval.py`, results in `eval/results.csv` and `eval/charts/` |
