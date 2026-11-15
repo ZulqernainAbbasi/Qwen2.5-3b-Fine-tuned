@@ -12,11 +12,12 @@ class BackendClient:
         self.headers = {"X-API-Key": api_key or ""}
         self.timeout = timeout
 
-    def _req(self, method: str, path: str, **kw) -> dict:
+    def _req(self, method: str, path: str, timeout: float | None = None, **kw) -> dict:
         if not self.base_url:
             raise BackendOffline("backend URL not configured")
         try:
-            r = requests.request(method, self.base_url + path, headers=self.headers, timeout=self.timeout, **kw)
+            r = requests.request(method, self.base_url + path, headers=self.headers,
+                                 timeout=timeout or self.timeout, **kw)
         except requests.RequestException as e:
             raise BackendOffline(str(e)) from e
         if r.status_code in (502, 503, 504, 530):  # tunnel/backend down
@@ -26,7 +27,7 @@ class BackendClient:
 
     def health(self) -> bool:
         try:
-            return self._req("GET", "/health", ).get("status") == "ok"
+            return self._req("GET", "/health", timeout=min(self.timeout, 5)).get("status") == "ok"
         except Exception:
             return False
 

@@ -10,3 +10,4 @@ outputs/
 .streamlit/secrets.toml
 ccp_sync*.tar
 pytest_out.txt
+unsloth_compiled_cache/
