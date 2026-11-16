@@ -106,7 +106,7 @@ def test_ticket_created():
 
 
 def test_all_tools_count():
-    assert len(tools.ALL_TOOLS) == 7
+    assert len(tools.ALL_TOOLS) == 8
 
 
 def test_suv_query_includes_crossovers(no_rag):
@@ -213,3 +213,29 @@ def test_unrequested_body_type_filter_ignored(no_rag):
     finally:
         tools.CURRENT_MESSAGE.reset(token)
     assert len([l for l in out.splitlines() if "Rs " in l]) >= 4
+
+
+def test_bank_financing_for_model():
+    out = tools.bank_financing.invoke({"car": "Suzuki Alto", "years": 5, "down_payment_pct": 30})
+    assert "Meezan Bank" in out and "Bank Alfalah" in out and "HBL" in out
+    assert "5 years" in out and "Rs 2,994,861" in out
+    assert "indicative" in out.lower()
+
+
+def test_bank_financing_applies_sbp_rules():
+    out = tools.bank_financing.invoke({"car": "Toyota Corolla", "years": 5})
+    assert "3 years" in out and "Rs 3,000,000" in out
+
+
+def test_bank_financing_unknown_car():
+    assert tools.bank_financing.invoke({"car": "tesla model 3"}) == config.REFUSAL
+
+
+def test_bank_financing_by_price():
+    out = tools.bank_financing.invoke({"car": "40 lakh", "years": 3})
+    assert "Rs 4,000,000" in out and "Meezan Bank" in out
+
+
+def test_emi_calculator_warns_about_sbp():
+    out = tools.emi_calculator.invoke({"price": "1 crore", "down_payment_pct": 20, "years": 7})
+    assert "SBP" in out

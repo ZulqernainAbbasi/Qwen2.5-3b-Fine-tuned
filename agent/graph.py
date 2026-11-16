@@ -17,6 +17,7 @@ AGENT_PROMPT = SYSTEM_PROMPT + (
     "- Before calling book_test_drive or book_service, restate all details and wait for the user to say yes.\n"
     "- If a tool returns the refusal sentence, repeat it and offer alternatives.\n"
     "- For complaints, discounts or anything you cannot do, call escalate_to_human.\n"
+    "- For bank loans, car financing, banks or instalments over a number of years, use bank_financing.\n"
     "- For spare parts, part prices, service costs or maintenance, use parts_and_service.\n"
     "- When a tool lists several variants, show EVERY variant with its price; never collapse them into a range.\n"
     "- Keep answers clear; end price answers with the dealer-confirmation note."
@@ -103,6 +104,9 @@ def _ensure_complete(out: dict) -> dict:
                 reply += "\n\nAll matching variants:\n" + "\n".join(missing)
             elif missing:
                 reply += "\n\nAlso matching:\n" + "\n".join(missing)
+        elif step["tool"] == "bank_financing" and "per month" in step["result"]:
+            # bank quotes are pure calculations: show them exactly, never the model's paraphrase
+            reply = step["result"]
         elif step["tool"] == "compare_models" and step["result"].startswith("|"):
             table = [l for l in step["result"].splitlines() if l.startswith("|")]
             prices = _PRICE.findall(step["result"])

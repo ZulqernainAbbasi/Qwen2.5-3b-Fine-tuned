@@ -20,6 +20,7 @@ python -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt
 | 3. Fine-tuning | `finetune/` (QLoRA with Unsloth in WSL; dataset builder + 1,300 examples) |
 | 4. Deployment | `backend/api.py` (FastAPI), `frontend/app.py` (Streamlit Cloud), `scripts/start_backend.ps1` (tunnel), `docs/DEPLOY.md` |
 | 5. Agentic AI | `agent/graph.py` (LangGraph) + `agent/tools.py` (search, compare, EMI, parts & service, bookings, escalation) |
-| Frontend | `frontend/app.py`: Assistant chat with car photos, Showroom gallery, Compare, Admin dashboard |
+| Frontend | `frontend/app.py`: Assistant chat with car photos and follow-ups, searchable Showroom with shortlist, Financing calculator (banks, years, SBP rules), Compare, Admin dashboard |
+| Bank financing | `agent/finance.py` + `data/banks.csv`: SBP rules (30% down, Rs 3m cap, 5/3-year tenure) and indicative rates for 8 banks |
 | Car photos | `data/images.csv` (Wikimedia Commons, free licences, credited in the app; `python -m scripts.fetch_images`) |
 | Evaluation | `eval/run_eval.py`, results in `eval/results.csv` and `eval/charts/` |

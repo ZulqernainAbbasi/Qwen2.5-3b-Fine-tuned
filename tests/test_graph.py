@@ -184,3 +184,22 @@ def test_compare_table_shown_when_model_summarises(fake):
     ]
     out = graph.run_agent("s14", "Corolla vs Civic")
     assert "| Price |" in out["reply"] and "8,499,000" in out["reply"]
+
+
+def test_bank_list_shown_when_model_summarises(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "bank_financing", "args": {"car": "Suzuki Alto", "years": 5}, "id": "b1"}]),
+        AIMessage(content="Meezan and Alfalah both finance the Alto."),
+    ]
+    out = graph.run_agent("s15", "Alto bank loan 5 years")
+    assert "HBL" in out["reply"] and "per month" in out["reply"]
+
+
+def test_bank_reply_is_exact_tool_quote(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "bank_financing", "args": {"car": "Toyota Corolla", "years": 5}, "id": "b2"}]),
+        AIMessage(content="- Bank AL Habib: Rs 103,117 to Rs 104,585 per month"),  # mislabelled numbers
+    ]
+    out = graph.run_agent("s16", "Corolla car loan 5 saal ke liye")
+    assert "3 years" in out["reply"] and "Rs 3,000,000" in out["reply"]
+    assert out["reply"].startswith("Financing Toyota Corolla")

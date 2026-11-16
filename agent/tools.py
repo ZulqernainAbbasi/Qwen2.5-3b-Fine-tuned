@@ -7,6 +7,7 @@ from typing import Any
 from langchain_core.tools import tool
 
 import config
+from agent import finance
 from agent.parsing import match_model, parse_price
 from backend import db
 from data.validate import load_cars
@@ -184,9 +185,48 @@ def emi_calculator(price: Any, down_payment_pct: float = 30, years: int = 5, ann
     r = annual_rate_pct / 100 / 12
     emi = loan / n if r == 0 else loan * r * (1 + r) ** n / ((1 + r) ** n - 1)
     total_interest = emi * n - loan
-    return (f"Price: Rs {p:,}. Down payment ({down_payment_pct:g}%): Rs {down:,}. Loan: Rs {loan:,}. "
-            f"Monthly instalment for {years} years at {annual_rate_pct:g}% per year: Rs {round(emi):,}. "
-            f"Total markup paid: Rs {round(total_interest):,}. (Estimate; banks' actual rates vary.)")
+    out = (f"Price: Rs {p:,}. Down payment ({down_payment_pct:g}%): Rs {down:,}. Loan: Rs {loan:,}. "
+           f"Monthly instalment for {years} years at {annual_rate_pct:g}% per year: Rs {round(emi):,}. "
+           f"Total markup paid: Rs {round(total_interest):,}. (Estimate; banks' actual rates vary.)")
+    if down_payment_pct < finance.MIN_DOWN_PCT or loan > finance.MAX_LOAN or years > 3:
+        out += (" Note: Pakistani bank loans follow " + finance.SBP_NOTE +
+                " Use bank_financing for a bank-by-bank quote within these rules.")
+    return out
+
+
+@tool
+def bank_financing(car: Any = "", years: Any = 3, down_payment_pct: Any = 30) -> str:
+    """Bank car-financing options in Pakistan (Meezan, Alfalah, HBL, MCB, UBL and more) with monthly
+    instalments for a chosen number of years. car: a model name ('Toyota Yaris') or a price ('40 lakh')."""
+    text = _text(car) or CURRENT_MESSAGE.get() or ""
+    try:
+        years = int(float(years))
+        down_payment_pct = float(down_payment_pct)
+    except (TypeError, ValueError):
+        years, down_payment_pct = 3, 30.0
+    hit = match_model(text)
+    cars = _cars()
+    if hit:
+        row = cars[(cars.brand == hit[0]) & (cars.model == hit[1])].sort_values("price_pkr").iloc[0]
+        price, cc, label = int(row.price_pkr), row.engine_cc, f"{row.brand} {row.model} {row.variant}"
+        cc = None if str(cc) in ("<NA>", "nan") else int(cc)
+    else:
+        if _words(text) & OTHER_BRANDS:
+            return config.REFUSAL
+        price = parse_price(text)
+        if not price:
+            return config.REFUSAL
+        cc, label = None, "a car"
+    q = finance.quote(price, cc, years=max(1, years), down_pct=down_payment_pct)
+    lines = [f"Financing {label} at Rs {price:,}: down payment Rs {q['down']:,}, loan Rs {q['loan']:,}, "
+             f"{q['years']} years (indicative bank rates; banks decide the final rate):"]
+    for r in q["banks"]:
+        lines.append(f"- {r['bank']} {r['product']} ({r['type']}): {r['rate_low']:g}-{r['rate_high']:g}% -> "
+                     f"Rs {r['emi_low']:,} to Rs {r['emi_high']:,} per month")
+    lines += q["notes"]
+    lines.append(finance.SBP_NOTE + " Rates: published bank comparisons 2026 and SBP KIBOR "
+                 f"{finance.KIBOR_1Y}% (Sep 2026). Confirm with the bank.")
+    return "\n".join(lines)
 
 
 def _validate_booking(name: str, phone: str, model: str, when: str):
@@ -246,5 +286,5 @@ def escalate_to_human(summary: str) -> str:
     return f"Ticket #{tid} created; a staff member will contact you."
 
 
-ALL_TOOLS = [search_cars, compare_models, emi_calculator, book_test_drive, book_service, parts_and_service,
-             escalate_to_human]
+ALL_TOOLS = [search_cars, compare_models, emi_calculator, bank_financing, book_test_drive, book_service,
+             parts_and_service, escalate_to_human]
