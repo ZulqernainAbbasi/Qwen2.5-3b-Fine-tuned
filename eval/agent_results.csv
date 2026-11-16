@@ -1,0 +1,11 @@
+task,expected_tool,used,success,latency_s
+What is the price of the Suzuki Alto?,search_cars,search_cars,True,3.8
+Compare Toyota Corolla and Honda Civic,compare_models,compare_models,True,1.8
+Monthly instalment for a 60 lakh car with 30% down for 5 years?,emi_calculator,emi_calculator,True,1.5
+Best SUV under 1 crore?,search_cars,search_cars,True,2.5
+Hyundai Tucson vs KIA Sportage,compare_models,compare_models,True,1.9
+80 lakh ki gaari ki 3 saal ki qist kitni hogi?,emi_calculator,emi_calculator,True,1.1
+"I want to complain, the dealer overcharged me. Let me talk to a human.",escalate_to_human,escalate_to_human,True,0.6
+Honda City price?,search_cars,search_cars,True,1.0
+"Yes confirmed: book a test drive for Ali, 03001234567, Toyota Corolla, Lahore, 2027-01-10",book_test_drive,book_test_drive,True,1.4
+"Yes confirmed: book service for Sara, 03211234567, Honda City, 10000 km, 2027-01-12",book_service,book_service,True,1.3
