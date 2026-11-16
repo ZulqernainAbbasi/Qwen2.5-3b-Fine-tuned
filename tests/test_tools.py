@@ -83,7 +83,7 @@ def test_search_tesla_returns_refusal(no_rag):
 
 def test_search_budget_filters(no_rag):
     out = tools.search_cars.invoke({"query": "family car", "max_price": "35 lakh"})
-    assert "Alto" in out and "Corolla" not in out
+    assert "Karvaan" in out and "Corolla" not in out
     for line in out.splitlines():
         if "Rs " in line:
             price = int(line.split("Rs ")[1].split()[0].replace(",", "").rstrip(".,"))
@@ -106,7 +106,7 @@ def test_ticket_created():
 
 
 def test_all_tools_count():
-    assert len(tools.ALL_TOOLS) == 6
+    assert len(tools.ALL_TOOLS) == 7
 
 
 def test_suv_query_includes_crossovers(no_rag):
@@ -144,3 +144,72 @@ def test_emi_accepts_numeric_price():
 
 def test_compare_accepts_non_string_gracefully():
     assert tools.compare_models.invoke({"model_a": {"type": "string"}, "model_b": "civic"}) == config.REFUSAL
+
+
+DOC_HIT = [{"text": "Suzuki Cultus genuine parts: Oil filter: Rs 1,450", "source": "https://bloompakistan.com/?p=184219",
+            "brand": "-", "model": "-", "score": 0.8}]
+
+
+def test_parts_question_goes_to_documents(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tools, "retrieve", lambda q, **k: calls.append(q) or DOC_HIT)
+    out = tools.search_cars.invoke({"query": "Cultus oil filter price"})
+    assert "1,450" in out and "bloompakistan" in out
+    assert "4,089,490" not in out  # must not list car variant prices
+    assert calls
+
+
+def test_parts_tool_returns_refusal_when_no_docs(no_rag):
+    assert tools.parts_and_service.invoke({"query": "Sorento timing belt price"}) == config.REFUSAL
+
+
+def test_parts_tool_returns_doc_text(monkeypatch):
+    monkeypatch.setattr(tools, "retrieve", lambda q, **k: DOC_HIT)
+    out = tools.parts_and_service.invoke({"query": "Cultus oil filter"})
+    assert "1,450" in out and "Source:" in out
+
+
+def test_is_parts_question():
+    assert tools.is_parts_question("Corolla brake pads price")
+    assert tools.is_parts_question("alto ka oil filter kitne ka hai")
+    assert tools.is_parts_question("when to change spark plugs")
+    assert not tools.is_parts_question("Corolla price")
+    assert not tools.is_parts_question("best SUV under 1 crore")
+
+
+def test_parts_answer_flags_unsourced_brands(monkeypatch):
+    hit = [{"text": "# Hyundai Tucson\nPrice range Rs 12,202,000", "source": "s", "brand": "-", "model": "-", "score": 0.7}]
+    monkeypatch.setattr(tools, "retrieve", lambda q, **k: hit)
+    out = tools.parts_and_service.invoke({"query": "Tucson timing belt price"})
+    assert "no verified part prices" in out.lower()
+
+
+def test_parts_detected_from_user_message_when_query_rewritten(monkeypatch):
+    monkeypatch.setattr(tools, "retrieve", lambda q, **k: DOC_HIT)
+    token = tools.CURRENT_MESSAGE.set("Honda City brake pads kitne ki hain?")
+    try:
+        out = tools.search_cars.invoke({"query": "Honda City"})
+    finally:
+        tools.CURRENT_MESSAGE.reset(token)
+    assert "4,737,000" not in out and "Source:" in out
+
+
+def test_budget_search_lists_best_within_budget_first(no_rag):
+    out = tools.search_cars.invoke({"query": "best family car under 60 lakh"})
+    prices = [int(l.split("Rs ")[1].split()[0].replace(",", "").rstrip(".,")) for l in out.splitlines() if "Rs " in l]
+    assert prices == sorted(prices, reverse=True) and prices[0] <= 6_000_000
+    assert "Every" not in out  # 4-seat cargo van is not a family car
+
+
+def test_family_means_five_plus_seats(no_rag):
+    out = tools.search_cars.invoke({"query": "family car", "max_price": "40 lakh"})
+    assert "Alto" not in out and "Karvaan" in out
+
+
+def test_unrequested_body_type_filter_ignored(no_rag):
+    token = tools.CURRENT_MESSAGE.set("Best family car under 60 lakh?")
+    try:
+        out = tools.search_cars.invoke({"query": "family car", "body_type": "mpv", "max_price": "60 lakh"})
+    finally:
+        tools.CURRENT_MESSAGE.reset(token)
+    assert len([l for l in out.splitlines() if "Rs " in l]) >= 4

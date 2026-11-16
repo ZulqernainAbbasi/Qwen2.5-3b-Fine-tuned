@@ -22,6 +22,14 @@ Architecture: **Streamlit Community Cloud** (UI, permanent URL) → **Cloudflare
 4. Open the Streamlit URL. The red "Backend is offline" banner should be gone.
 5. Keep the laptop awake and plugged in while it's in use.
 
+## What each tab does
+- **Assistant:** chat with the agent. Car cards with photos appear under answers that mention a model, and "Agent steps" shows which tools were used.
+- **Showroom:** browse all models with photos, filtering by brand, budget, body type and fuel. Works even when the backend is offline.
+- **Compare:** side-by-side photos and specs for two models, plus an "ask the assistant" button.
+- **Admin:** for dealership staff. Enter `ADMIN_PASSWORD` to see every test drive and service booking the agent made, and every conversation it handed to a human (escalation tickets).
+
+Car photos come from Wikimedia Commons under free licences and are credited under each photo (`data/images.csv`, refresh with `python -m scripts.fetch_images`).
+
 ## Troubleshooting
 - Offline banner: check that `outputs\backend_url.txt` matches the secret, and that `Invoke-RestMethod <url>/health` returns ok.
 - 401 errors: the `CAR_API_KEY` in Secrets must match `.env`.

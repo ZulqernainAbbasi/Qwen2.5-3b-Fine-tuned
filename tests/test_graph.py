@@ -134,3 +134,53 @@ def test_complete_reply_not_duplicated(fake):
     ]
     out = graph.run_agent("s9", "Honda Civic price")
     assert out["reply"].count("8,499,000") == 1
+
+
+def test_unsourced_part_price_gets_honest_reply(fake, monkeypatch):
+    monkeypatch.setattr("agent.tools.retrieve", lambda q, **k: [
+        {"text": "# Hyundai Tucson\nPrice Rs 12,202,000", "source": "s", "brand": "-", "model": "-", "score": 0.7}])
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "parts_and_service", "args": {"query": "Tucson timing belt price"}, "id": "p1"}]),
+        AIMessage(content="The Hyundai Tucson costs Rs 12,202,000."),
+    ]
+    out = graph.run_agent("s10", "Tucson timing belt price")
+    assert out["reply"].startswith(config.REFUSAL)
+    assert "12,202,000" not in out["reply"] and "dealer" in out["reply"].lower()
+
+
+def test_invented_numbers_are_replaced_with_tool_data(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "search_cars", "args": {"query": "Toyota Yaris"}, "id": "g1"}]),
+        AIMessage(content="Yaris from Rs 4,649,000. EMI only Rs 2,707/month with Rs 4,649,00 down."),
+    ]
+    out = graph.run_agent("s11", "Toyota Yaris price")
+    assert "2,707" not in out["reply"] and "4,649,00 " not in out["reply"]
+    assert "5,719,000" in out["reply"]
+
+
+def test_grounded_numbers_kept(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "emi_calculator", "args": {"price": "50 lakh"}, "id": "e1"}]),
+        AIMessage(content="Your monthly instalment is Rs 92,729 on a loan of Rs 3,500,000."),
+    ]
+    out = graph.run_agent("s12", "EMI for 50 lakh car")
+    assert out["reply"] == "Your monthly instalment is Rs 92,729 on a loan of Rs 3,500,000."
+
+
+def test_partial_reply_appends_only_missing_variants(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "search_cars", "args": {"query": "Toyota Yaris"}, "id": "m1"}]),
+        AIMessage(content="Yaris: GLi MT Rs 4,649,000, GLi CVT Rs 4,809,000, ATIV MT Rs 4,829,000."),
+    ]
+    out = graph.run_agent("s13", "Toyota Yaris price")
+    assert out["reply"].count("4,649,000") == 1
+    assert "5,719,000" in out["reply"] and "6,389,000" in out["reply"]
+
+
+def test_compare_table_shown_when_model_summarises(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "compare_models", "args": {"model_a": "corolla", "model_b": "civic"}, "id": "k1"}]),
+        AIMessage(content="The Corolla is cheaper; the Civic is more luxurious."),
+    ]
+    out = graph.run_agent("s14", "Corolla vs Civic")
+    assert "| Price |" in out["reply"] and "8,499,000" in out["reply"]

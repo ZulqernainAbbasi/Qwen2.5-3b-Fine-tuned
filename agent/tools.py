@@ -32,6 +32,29 @@ def _text(x: Any) -> str | None:
     return x.strip() if isinstance(x, str) and x.strip() else None
 
 
+PARTS_RE = re.compile(
+    r"\b(parts?|spare|filters?|oil change|engine oil|brake ?pads?|brakes?|spark ?plugs?|coolant|clutch|wipers?|"
+    r"battery|tyres?|tires?|headlights?|gear oil|service cost|maintenance|servic(e|ing)|timing belt|bumper)\b", re.I)
+
+
+def is_parts_question(text: str) -> bool:
+    """True for spare-part / service / maintenance questions (answered from documents, not the car price list)."""
+    return bool(PARTS_RE.search(text or ""))
+
+
+def _doc_answer(query: str) -> str:
+    hits = [h for h in retrieve(query, k=4) if h.get("model") in ("-", "", None)]
+    if not hits:
+        return config.REFUSAL
+    out = "\n".join(f"- {h['text'][:700]} (Source: {h['source']})" for h in hits)
+    if is_parts_question(query) and not any(re.search(r"parts|maintenance", h["text"].split("\n", 1)[0], re.I)
+                                            for h in hits):
+        out += ("\nNote: there are no verified part prices for this car in the data (part prices are only sourced "
+                "for Suzuki Cultus/Alto/Swift, Toyota Corolla and Honda). Say so, give general service advice, "
+                "and suggest asking an authorised dealer.")
+    return out
+
+
 def _cars():
     return load_cars()
 
@@ -57,10 +80,17 @@ def search_cars(query: Any = "", brand: Any = None, max_price: Any = None, body_
     brand = next((b for b in cars.brand.unique() if _text(brand) and b.lower() == _text(brand).lower()), None)
     body_type = _text(body_type)
     body_type = body_type.lower() if body_type and body_type.lower() in set(BODY_WORDS.values()) else None
+    user_msg = (CURRENT_MESSAGE.get() or query).lower()
+    if body_type and not any(k in user_msg for k, v in BODY_WORDS.items() if v == body_type):
+        body_type = None  # small models add filters the user never asked for
     max_price = _text(max_price)
     words = _words(query)
     if words & OTHER_BRANDS:
         return config.REFUSAL
+    if is_parts_question(query):
+        return _doc_answer(query)
+    if is_parts_question(CURRENT_MESSAGE.get()):  # the model rewrote a parts question into a car query
+        return _doc_answer(CURRENT_MESSAGE.get())
     budget = parse_price(max_price) if max_price else None
     if budget is None:
         budget = parse_price(query) if re.search(r"under|below|upto|up to|tak|budget|within|less than|max", query, re.I) else None
@@ -81,6 +111,9 @@ def search_cars(query: Any = "", brand: Any = None, max_price: Any = None, body_
             allowed = {"suv", "crossover"} if bt == "suv" else {bt}
             filtered = filtered[filtered.body_type.isin(allowed)]
             structured = True
+        if "family" in words or "families" in words:
+            filtered = filtered[filtered.seats >= 5]
+            structured = True
         fuel = next((v for k, v in FUEL_WORDS.items() if k in words), None)
         if fuel:
             filtered = filtered[filtered.fuel == fuel]
@@ -89,7 +122,8 @@ def search_cars(query: Any = "", brand: Any = None, max_price: Any = None, body_
         filtered = filtered[filtered.price_pkr <= budget]
         structured = True
     if structured and len(filtered):
-        rows = filtered.sort_values("price_pkr")
+        # with a budget, show the best cars within it first; otherwise cheapest first
+        rows = filtered.sort_values("price_pkr", ascending=not (budget and not hit))
         if not hit:  # many models: show the cheapest matching variant of each model
             rows = rows.drop_duplicates(["brand", "model"])
         shown = rows.head(MAX_LIST)
@@ -199,10 +233,18 @@ def book_service(name: str, phone: str, model: str, km: int, date: str) -> str:
 
 
 @tool
+def parts_and_service(query: Any = "") -> str:
+    """Spare parts, part prices, service/maintenance costs and intervals, genuine vs copy parts.
+    query: the question as text, e.g. 'Cultus oil filter price' or 'when to change spark plugs'."""
+    return _doc_answer(_text(query) or CURRENT_MESSAGE.get() or "")
+
+
+@tool
 def escalate_to_human(summary: str) -> str:
     """Hand the conversation to a human staff member (complaints, negotiations, anything you cannot do)."""
     tid = db.add_ticket(summary)
     return f"Ticket #{tid} created; a staff member will contact you."
 
 
-ALL_TOOLS = [search_cars, compare_models, emi_calculator, book_test_drive, book_service, escalate_to_human]
+ALL_TOOLS = [search_cars, compare_models, emi_calculator, book_test_drive, book_service, parts_and_service,
+             escalate_to_human]

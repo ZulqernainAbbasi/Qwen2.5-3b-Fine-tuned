@@ -19,5 +19,7 @@ python -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt
 | 2. RAG on custom data | `data/cars.csv`, `data/docs/`, `rag/` (ChromaDB + bge-small) |
 | 3. Fine-tuning | `finetune/` (QLoRA with Unsloth in WSL; dataset builder + 1,300 examples) |
 | 4. Deployment | `backend/api.py` (FastAPI), `frontend/app.py` (Streamlit Cloud), `scripts/start_backend.ps1` (tunnel), `docs/DEPLOY.md` |
-| 5. Agentic AI | `agent/graph.py` (LangGraph) + `agent/tools.py` (search, compare, EMI, bookings, escalation) |
+| 5. Agentic AI | `agent/graph.py` (LangGraph) + `agent/tools.py` (search, compare, EMI, parts & service, bookings, escalation) |
+| Frontend | `frontend/app.py`: Assistant chat with car photos, Showroom gallery, Compare, Admin dashboard |
+| Car photos | `data/images.csv` (Wikimedia Commons, free licences, credited in the app; `python -m scripts.fetch_images`) |
 | Evaluation | `eval/run_eval.py`, results in `eval/results.csv` and `eval/charts/` |

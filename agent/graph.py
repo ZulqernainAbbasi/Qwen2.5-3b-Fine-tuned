@@ -17,6 +17,7 @@ AGENT_PROMPT = SYSTEM_PROMPT + (
     "- Before calling book_test_drive or book_service, restate all details and wait for the user to say yes.\n"
     "- If a tool returns the refusal sentence, repeat it and offer alternatives.\n"
     "- For complaints, discounts or anything you cannot do, call escalate_to_human.\n"
+    "- For spare parts, part prices, service costs or maintenance, use parts_and_service.\n"
     "- When a tool lists several variants, show EVERY variant with its price; never collapse them into a range.\n"
     "- Keep answers clear; end price answers with the dealer-confirmation note."
 )
@@ -71,26 +72,65 @@ def run_agent(session_id: str, message: str) -> dict:
 
 
 _PRICE = re.compile(r"Rs ([\d,]{7,})")
+_AMOUNT = re.compile(r"Rs\.?\s?(\d[\d,]*)")
+
+
+def _guard_numbers(out: dict) -> dict:
+    """Any rupee amount in the reply must appear in a tool result; otherwise answer from tool data only."""
+    if not out["steps"]:
+        return out
+    tool_text = " ".join(s["result"] for s in out["steps"])
+    allowed = {n.replace(",", "") for n in re.findall(r"\d[\d,]*", tool_text)}
+    invented = [a for a in _AMOUNT.findall(out["reply"]) if a.rstrip(",").replace(",", "") not in allowed]
+    if not invented:
+        return out
+    lines = []
+    for s in out["steps"]:
+        for line in s["result"].splitlines():
+            if line.strip() and not line.startswith("Note:"):
+                lines.append(line.split(". Source:")[0].split(" (Source:")[0])
+    return {**out, "reply": "Here is what I found:\n" + "\n".join(lines)}
 
 
 def _ensure_complete(out: dict) -> dict:
-    """If the model summarised away variants the search tool found, append the tool's list."""
+    """Make sure the user sees what the tools found when the model summarised it away."""
     reply = out["reply"]
     for step in out["steps"]:
-        if step["tool"] != "search_cars":
-            continue
-        lines = [l for l in step["result"].splitlines() if l.startswith("- ") and _PRICE.search(l)]
-        missing = [l for l in lines if _PRICE.search(l).group(1) not in reply]
-        if missing:
-            listing = "\n".join(l.split(". Source:")[0] for l in lines)
-            reply = f"{reply}\n\nAll matching variants:\n{listing}"
+        if step["tool"] == "search_cars":
+            lines = [l for l in step["result"].splitlines() if l.startswith("- ") and _PRICE.search(l)]
+            missing = [l.split(". Source:")[0] for l in lines if _PRICE.search(l).group(1) not in reply]
+            if missing and len(missing) == len(lines):
+                reply += "\n\nAll matching variants:\n" + "\n".join(missing)
+            elif missing:
+                reply += "\n\nAlso matching:\n" + "\n".join(missing)
+        elif step["tool"] == "compare_models" and step["result"].startswith("|"):
+            table = [l for l in step["result"].splitlines() if l.startswith("|")]
+            prices = _PRICE.findall(step["result"])
+            if prices and not all(p in reply for p in prices):
+                reply += "\n\n" + "\n".join(table)
     return {**out, "reply": reply}
 
 
+UNSOURCED_PARTS_REPLY = (
+    f"{config.REFUSAL} I don't have a sourced part price for that car. "
+    "General advice: use genuine parts from an authorised dealer (copies sold far below market price are rarely "
+    "genuine), and follow the service intervals in your owner's manual. I have sourced part prices for the "
+    "Suzuki Cultus/Alto/Swift, Toyota Corolla and Honda; for this car, please ask an authorised dealer."
+)
+
+
+def _guard_parts(out: dict) -> dict:
+    """If the parts tool said no part prices are sourced, never let the model improvise numbers."""
+    if any(s["tool"] in ("parts_and_service", "search_cars") and "no verified part prices" in s["result"].lower()
+           for s in out["steps"]):
+        return {**out, "reply": UNSOURCED_PARTS_REPLY}
+    return out
+
+
 def _run_with_retry(session_id: str, message: str) -> dict:
-    out = _ensure_complete(_run_once(session_id, message))
+    out = _guard_parts(_ensure_complete(_guard_numbers(_run_once(session_id, message))))
     if not out["steps"] and out["reply"].strip().startswith(config.REFUSAL):
-        retry = _ensure_complete(_run_once(session_id, RETRY_NUDGE + message))
+        retry = _ensure_complete(_guard_numbers(_run_once(session_id, RETRY_NUDGE + message)))
         if retry["steps"]:
             return retry
     return out
