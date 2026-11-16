@@ -1,4 +1,6 @@
 """LangGraph ReAct agent over the six car tools, with per-session memory and a step limit."""
+import re
+
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.errors import GraphRecursionError
@@ -15,7 +17,8 @@ AGENT_PROMPT = SYSTEM_PROMPT + (
     "- Before calling book_test_drive or book_service, restate all details and wait for the user to say yes.\n"
     "- If a tool returns the refusal sentence, repeat it and offer alternatives.\n"
     "- For complaints, discounts or anything you cannot do, call escalate_to_human.\n"
-    "- Keep answers short and clear; end price answers with the dealer-confirmation note."
+    "- When a tool lists several variants, show EVERY variant with its price; never collapse them into a range.\n"
+    "- Keep answers clear; end price answers with the dealer-confirmation note."
 )
 
 _AGENT = None
@@ -67,10 +70,27 @@ def run_agent(session_id: str, message: str) -> dict:
         CURRENT_MESSAGE.reset(token)
 
 
+_PRICE = re.compile(r"Rs ([\d,]{7,})")
+
+
+def _ensure_complete(out: dict) -> dict:
+    """If the model summarised away variants the search tool found, append the tool's list."""
+    reply = out["reply"]
+    for step in out["steps"]:
+        if step["tool"] != "search_cars":
+            continue
+        lines = [l for l in step["result"].splitlines() if l.startswith("- ") and _PRICE.search(l)]
+        missing = [l for l in lines if _PRICE.search(l).group(1) not in reply]
+        if missing:
+            listing = "\n".join(l.split(". Source:")[0] for l in lines)
+            reply = f"{reply}\n\nAll matching variants:\n{listing}"
+    return {**out, "reply": reply}
+
+
 def _run_with_retry(session_id: str, message: str) -> dict:
-    out = _run_once(session_id, message)
+    out = _ensure_complete(_run_once(session_id, message))
     if not out["steps"] and out["reply"].strip().startswith(config.REFUSAL):
-        retry = _run_once(session_id, RETRY_NUDGE + message)
+        retry = _ensure_complete(_run_once(session_id, RETRY_NUDGE + message))
         if retry["steps"]:
             return retry
     return out

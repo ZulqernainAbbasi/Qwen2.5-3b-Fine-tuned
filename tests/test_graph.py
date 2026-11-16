@@ -49,7 +49,8 @@ def test_tool_called_and_trace_recorded(fake):
         AIMessage(content="The Suzuki Alto starts at Rs 2,994,861."),
     ]
     out = graph.run_agent("s1", "Alto price?")
-    assert out["reply"] == "The Suzuki Alto starts at Rs 2,994,861."
+    assert out["reply"].startswith("The Suzuki Alto starts at Rs 2,994,861.")
+    assert "3,326,446" in out["reply"]  # all variants appended
     assert len(out["steps"]) == 1
     step = out["steps"][0]
     assert step["tool"] == "search_cars" and step["args"] == {"query": "Suzuki Alto price"}
@@ -113,3 +114,23 @@ def test_junk_tool_args_use_user_message(fake):
     ]
     out = graph.run_agent("s7", "Honda City price?")
     assert "4,737,000" in out["steps"][0]["result"]
+
+
+def test_summarised_reply_gets_full_variant_list(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "search_cars", "args": {"query": "Toyota Yaris price"}, "id": "y1"}]),
+        AIMessage(content="Toyota Yaris: Rs 4,649,000 to Rs 6,389,000."),
+    ]
+    out = graph.run_agent("s8", "Toyota Yaris price")
+    for price in ["4,649,000", "4,809,000", "4,829,000", "5,719,000", "6,389,000"]:
+        assert price in out["reply"], price
+    assert out["reply"].startswith("Toyota Yaris: Rs 4,649,000 to Rs 6,389,000.")
+
+
+def test_complete_reply_not_duplicated(fake):
+    fake.script = [
+        AIMessage(content="", tool_calls=[{"name": "search_cars", "args": {"query": "Honda Civic"}, "id": "c9"}]),
+        AIMessage(content="Civic: Standard Rs 8,499,000, Oriel Rs 8,834,000, RS Rs 10,100,000."),
+    ]
+    out = graph.run_agent("s9", "Honda Civic price")
+    assert out["reply"].count("8,499,000") == 1
